@@ -1,0 +1,70 @@
+# PART 3: THE RUNNER (the pressure test)
+# Asks an AI many fresh questions, level by level, until it breaks.
+# Run this file alone:  python p3_runner.py   (tests a deliberately bad AI)
+from collections import Counter
+from p1_tasks import PH_A, PH_B, t_arith, t_impossible, t_under, t_code
+from p2_judge import (ask, guarded, check_solve, check_impossible,
+                      check_under, check_code, check_pair)
+
+ALL_CATS = ["arith", "impossible", "under", "code", "consistency"]
+
+
+def run_suite(solver, level, phr, n=10, only=None):
+    """n fresh questions per category. Returns (problems per category, cheat flags)."""
+    cats = only or ALL_CATS
+    res = {c: [] for c in cats}
+    answers = []
+    for _ in range(n):
+        if "arith" in cats:
+            t = t_arith(level, phr)
+            r = ask(solver, t["q"])
+            res["arith"].append(guarded(lambda: check_solve(t, r)))
+            answers.append(str(r.get("answer")))
+        if "impossible" in cats:
+            t = t_impossible(level)
+            res["impossible"].append(guarded(lambda: check_impossible(t, ask(solver, t["q"]))))
+        if "under" in cats:
+            t = t_under(level)
+            res["under"].append(guarded(lambda: check_under(t, ask(solver, t["q"]))))
+        if "code" in cats:
+            t = t_code(level)
+            res["code"].append(guarded(lambda: check_code(t, ask(solver, t["q"]))))
+        if "consistency" in cats:
+            res["consistency"].append(guarded(lambda: check_pair(solver, level)))
+    flags = []
+    if answers and Counter(answers).most_common(1)[0][1] > 0.5 * len(answers):
+        flags.append("CONSTANT-ANSWER: same answer to most different questions")
+    return res, flags
+
+
+def rate(problem_lists):
+    """share of tasks with no problems at all"""
+    return sum(1 for p in problem_lists if not p) / len(problem_lists)
+
+
+def pressure_test(name, solver, max_level=5, mark=0.9, n=10):
+    print(f"\n=== {name} ===")
+    for level in range(1, max_level + 1):
+        resA, flagsA = run_suite(solver, level, PH_A, n)
+        resB, flagsB = run_suite(solver, level, PH_B, n, only=["arith"])
+        line = "  ".join(f"{c}={rate(v):.0%}" for c, v in resA.items())
+        print(f"level {level} (seen wording):   {line}")
+        print(f"level {level} (unseen wording): arith={rate(resB['arith']):.0%}")
+        problems = [c for c, v in resA.items() if rate(v) < mark]
+        flags = set(flagsA + flagsB)
+        if rate(resA["arith"]) - rate(resB["arith"]) > 0.3:
+            flags.add("MEMORIZED FORMAT: much worse on unseen wording")
+        if problems or flags:
+            print(f"  -> BREAKS at level {level}. Weak: {problems}")
+            for c in problems:
+                why = Counter(x for f in resA[c] for x in f).most_common(2)
+                print(f"     {c}: {why}")
+            for f in flags:
+                print(f"     FLAG: {f}")
+            return
+    print("  -> survived every level, no flags")
+
+
+if __name__ == "__main__":
+    print("PART 3 check: a lazy AI that answers '0' to everything must break at level 1.")
+    pressure_test("lazy AI", lambda q: {"answer": "0"}, max_level=2, n=5)
