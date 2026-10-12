@@ -32,7 +32,10 @@ def run_suite(solver, level, phr, n=10, only=None):
         if "consistency" in cats:
             res["consistency"].append(guarded(lambda: check_pair(solver, level)))
     flags = []
-    if answers and Counter(answers).most_common(1)[0][1] > 0.5 * len(answers):
+    # same answer to most questions (needs at least 4 repeats, so luck with a
+    # small sample can't make an honest AI look like a cheater)
+    top = Counter(answers).most_common(1)[0][1] if answers else 0
+    if top >= 4 and top > 0.5 * len(answers):
         flags.append("CONSTANT-ANSWER: same answer to most different questions")
     return res, flags
 
